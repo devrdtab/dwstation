@@ -11,7 +11,7 @@
 // =====================================================
 // WIFI
 // =====================================================
-const char* WIFI_SSID = "Sierra";
+const char* WIFI_SSID = "Sierra1";
 const char* WIFI_PASS = "peremoga";
 // =====================================================
 // NTP / ЧАСОВОЙ ПОЯС
@@ -43,11 +43,6 @@ bool bmpOk = false;
 // =====================================================
 const unsigned long UPDATE_INTERVAL = 1000;
 unsigned long lastUpdate = 0;
-// =====================================================
-// ПРОВЕРКА NTP
-// =====================================================
-const unsigned long NTP_CHECK_INTERVAL = 1000;
-unsigned long lastNtpCheck = 0;
 // =====================================================
 // АНИМИРОВАННАЯ ЛИНИЯ
 // =====================================================
@@ -88,19 +83,7 @@ float pressureOffset = 0.0;
 // =====================================================
 Preferences preferences;
 // =====================================================
-// ГРАФИК ДАВЛЕНИЯ ЗА 12 ЧАСОВ
-// =====================================================
-const int PRESSURE_HISTORY_SIZE = 12;
-const unsigned long PRESSURE_SAMPLE_INTERVAL = 3600000UL;
-const float PRESSURE_TREND_THRESHOLD = 0.5;
-float pressureHistory[PRESSURE_HISTORY_SIZE];
-int pressureHistoryCount = 0;
-unsigned long lastPressureSample = 0;
-bool pressureHistoryStarted = false;
-bool pressureBlinkState = true;
-unsigned long lastPressureBlink = 0;
-// =====================================================
-// СТРУКТУРА ФАЗЫ ЛУНЫ
+// СОСТРУКТУРА ФАЗЫ ЛУНЫ
 // =====================================================
 struct MoonInfo {
   float phase;
@@ -130,10 +113,6 @@ void drawAnimatedLine();
 void drawWaveGrid();
 void drawAnimatedWave();
 bool updateNTPStatus();
-double normalizeDegrees(double value);
-void updatePressureHistory(float pressure);
-void drawPressureGraph();
-char getPressureTrend();
 // =====================================================
 // SETUP
 // =====================================================
@@ -151,18 +130,12 @@ void setup() {
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
   display.display();
-  // ---------------------------------------------------
-  // AHT20
-  // ---------------------------------------------------
   ahtOk = aht.begin();
   if (!ahtOk) {
     Serial.println("AHT20 не найден!");
   } else {
     Serial.println("AHT20 OK");
   }
-  // ---------------------------------------------------
-  // BMP280
-  // ---------------------------------------------------
   bmpOk = bmp.begin(0x76);
   if (!bmpOk) {
     bmpOk = bmp.begin(0x77);
@@ -173,74 +146,29 @@ void setup() {
     Serial.println("BMP280 OK");
     bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,Adafruit_BMP280::SAMPLING_X2,Adafruit_BMP280::SAMPLING_X16,Adafruit_BMP280::FILTER_X16,Adafruit_BMP280::STANDBY_MS_500);
   }
-  // ---------------------------------------------------
-  // КАЛИБРОВКА
-  // ---------------------------------------------------
   loadCalibration();
-  // ---------------------------------------------------
-  // NTP
-  // ---------------------------------------------------
   configTime(GMT_OFFSET_SEC,DAYLIGHT_OFFSET_SEC,NTP_SERVER);
-  // ---------------------------------------------------
-  // ЗАГРУЗОЧНАЯ АНИМАЦИЯ
-  // ---------------------------------------------------
   bootAnimation();
-  // ---------------------------------------------------
-  // После bootAnimation НЕ ждём NTP.
-  // Просто проверяем его один раз.
-  // ---------------------------------------------------
   updateNTPStatus();
-  // ---------------------------------------------------
-  // Первый экран
-  // ---------------------------------------------------
   updateDisplay();
   lastUpdate = millis();
-  lastNtpCheck = millis();
 }
 // =====================================================
 // LOOP
 // =====================================================
 void loop() {
   unsigned long now = millis();
-  // ===================================================
-  // WIFI
-  // ===================================================
   bool currentWifi = WiFi.status() == WL_CONNECTED;
   if (currentWifi) {
     wifiConnected = true;
+    updateNTPStatus();
   } else {
     wifiConnected = false;
-    ntpTimeValid = false;
   }
-  // ===================================================
-  // NTP
-  // Проверяем только раз в секунду
-  // ===================================================
-  if (currentWifi) {
-    if (now - lastNtpCheck >= NTP_CHECK_INTERVAL) {
-      lastNtpCheck = now;
-      updateNTPStatus();
-    }
-  }
-  // ===================================================
-  // ОБНОВЛЕНИЕ ГРАФИКА ДАВЛЕНИЯ
-  // ===================================================
-  if (now - lastPressureBlink >= 1000) {
-    lastPressureBlink = now;
-    pressureBlinkState = !pressureBlinkState;
-  }
-  // ===================================================
-  // ОБНОВЛЕНИЕ ОСНОВНОГО ЭКРАНА
-  // ===================================================
   if (now - lastUpdate >= UPDATE_INTERVAL) {
     lastUpdate = now;
     updateDisplay();
   }
-  // ===================================================
-  // АНИМАЦИЯ ВОЛНЫ
-  // Только если WiFi отсутствует
-  // и NTP не был получен
-  // ===================================================
   if (!wifiConnected && wifiAttemptFinished && !ntpTimeValid) {
     if (now - lastWaveUpdate >= WAVE_INTERVAL) {
       lastWaveUpdate = now;
@@ -257,15 +185,7 @@ void loop() {
 // =====================================================
 bool updateNTPStatus() {
   struct tm timeinfo;
-  bool result = getLocalTime(&timeinfo,100);
-  if (result) {
-    if (!ntpTimeValid) {
-      Serial.println();
-      Serial.println("================================");
-      Serial.println("NTP ВРЕМЯ ПОЛУЧЕНО");
-      Serial.println("================================");
-      Serial.printf("Time: %02d:%02d:%02d\n",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
-    }
+  if (getLocalTime(&timeinfo,100)) {
     ntpTimeValid = true;
     return true;
   }
@@ -343,9 +263,6 @@ void bootAnimation() {
   unsigned long calibrationStartTime = 0;
   unsigned long lastCalibrationSample = 0;
   for (int percent = 0;percent <= totalSteps;percent++) {
-    // =================================================
-    // WIFI
-    // =================================================
     if (percent >= 50 && !wifiStarted) {
       wifiStarted = true;
       wifiStartTime = millis();
@@ -365,9 +282,6 @@ void bootAnimation() {
         Serial.println("WiFi: таймаут 10 секунд");
       }
     }
-    // =================================================
-    // КАЛИБРОВКА
-    // =================================================
     if (percent >= 70 && !calibrationStarted) {
       calibrationStarted = true;
       calibrationStartTime = millis();
@@ -385,9 +299,6 @@ void bootAnimation() {
         calibrationFinished = true;
       }
     }
-    // =================================================
-    // ПРОЦЕСС КАЛИБРОВКИ
-    // =================================================
     if (calibrationStarted && RESET_CALIBRATION && !calibrationFinished) {
       unsigned long elapsed = millis() - calibrationStartTime;
       if (elapsed >= CALIBRATION_WARMUP && calibrationSample < CALIBRATION_SAMPLES) {
@@ -435,9 +346,6 @@ void bootAnimation() {
           Serial.println();
         }
       }
-      // =================================================
-      // ЗАВЕРШЕНИЕ КАЛИБРОВКИ
-      // =================================================
       if (calibrationSample >= CALIBRATION_SAMPLES) {
         float measuredTemperature = NAN;
         float measuredHumidity = NAN;
@@ -465,9 +373,6 @@ void bootAnimation() {
         Serial.printf("Среднее P: %.2f hPa | Offset: %.2f hPa\n",measuredPressure,pressureOffset);
       }
     }
-    // =================================================
-    // ТЕКСТ СТАТУСА
-    // =================================================
     const char* status;
     if (percent < 25) {
       status = "Starting..";
@@ -483,17 +388,11 @@ void bootAnimation() {
       status = "DONE";
     }
     showBootScreen(percent,status,WiFi.status() == WL_CONNECTED);
-    // =================================================
-    // ОЖИДАНИЕ WIFI
-    // =================================================
     if (percent >= 50 && percent < 70 && !wifiFinished) {
       percent--;
       delay(100);
       continue;
     }
-    // =================================================
-    // ОЖИДАНИЕ КАЛИБРОВКИ
-    // =================================================
     if (percent >= 70 && percent < 90 && RESET_CALIBRATION && !calibrationFinished) {
       percent--;
       delay(100);
@@ -501,19 +400,9 @@ void bootAnimation() {
     }
     delay(animationDelay);
   }
-  // ===================================================
-  // BOOT FINISHED
-  // ===================================================
   wifiAttemptFinished = true;
-  Serial.println();
-  Serial.println("Boot animation завершена.");
-  if (wifiConnected) {
-    Serial.println("WiFi подключен.");
-    Serial.println("Ожидание NTP без блокировки экрана...");
-  } else {
-    Serial.println("WiFi отсутствует.");
-  }
-  delay(100);
+  updateNTPStatus();
+  delay(500);
 }
 // =====================================================
 // ЗАГРУЗКА КАЛИБРОВКИ ИЗ FLASH
@@ -579,99 +468,19 @@ void performCalibration() {
   Serial.println("performCalibration больше не используется.");
 }
 // =====================================================
-// НОРМАЛИЗАЦИЯ УГЛА
-// =====================================================
-double normalizeDegrees(double value) {
-  value = fmod(value,360.0);
-  if (value < 0.0) {
-    value += 360.0;
-  }
-  return value;
-}
-// =====================================================
 // РАСЧЁТ ФАЗЫ ЛУНЫ
-// Используется положение Солнца и Луны.
 // =====================================================
 MoonInfo getMoonPhase(time_t now) {
-  const double MOON_DEG_TO_RAD = PI / 180.0;
-  const double MOON_RAD_TO_DEG = 180.0 / PI;
+  const double SYNODIC_MONTH = 29.530588853;
+  const double KNOWN_NEW_MOON = 2451550.1;
   double jd = ((double)now / 86400.0) + 2440587.5;
-  double d = jd - 2451543.5;
-  // ===================================================
-  // СОЛНЦЕ
-  // ===================================================
-  double ws = (282.9404 + 0.0000470935 * d) * MOON_DEG_TO_RAD;
-  double es = 0.016709 - 0.000000001151 * d;
-  double Ms = (356.0470 + 0.9856002585 * d) * MOON_DEG_TO_RAD;
-  double Es = Ms + es * sin(Ms) * (1.0 + es * cos(Ms));
-  double xs = cos(Es) - es;
-  double ys = sqrt(1.0 - es * es) * sin(Es);
-  double vs = atan2(ys,xs);
-  double sunLon = normalizeDegrees((vs + ws) * MOON_RAD_TO_DEG);
-  // ===================================================
-  // ЛУНА
-  // ===================================================
-  double Nm = (125.1228 - 0.0529538083 * d) * MOON_DEG_TO_RAD;
-  double im = 5.1454 * MOON_DEG_TO_RAD;
-  double wm = (318.0634 + 0.1643573223 * d) * MOON_DEG_TO_RAD;
-  double am = 60.2666;
-  double em = 0.054900;
-  double Mm = (115.3654 + 13.0649929509 * d) * MOON_DEG_TO_RAD;
-  double Em = Mm + em * sin(Mm) * (1.0 + em * cos(Mm));
-  double xv = am * (cos(Em) - em);
-  double yv = am * (sqrt(1.0 - em * em) * sin(Em));
-  double vm = atan2(yv,xv);
-  double rm = sqrt(xv * xv + yv * yv);
-  double xh = rm * (cos(Nm) * cos(vm + wm) - sin(Nm) * sin(vm + wm) * cos(im));
-  double yh = rm * (sin(Nm) * cos(vm + wm) + cos(Nm) * sin(vm + wm) * cos(im));
-  double zh = rm * sin(vm + wm) * sin(im);
-  double moonLon = atan2(yh,xh);
-  // ===================================================
-  // ОСНОВНЫЕ ЛУННЫЕ АРГУМЕНТЫ
-  // ===================================================
-  double Ls = Ms + ws;
-  double Lm = Mm + wm + Nm;
-  double D = Lm - Ls;
-  double F = Lm - Nm;
-  // ===================================================
-  // ПОПРАВКИ ПОЛОЖЕНИЯ ЛУНЫ
-  // ===================================================
-  double dlon = 0.0;
-  dlon += -1.274 * sin(Mm - 2.0 * D);
-  dlon += 0.658 * sin(2.0 * D);
-  dlon += -0.186 * sin(Ms);
-  dlon += -0.059 * sin(2.0 * Mm - 2.0 * D);
-  dlon += -0.057 * sin(Mm - 2.0 * D + Ms);
-  dlon += 0.053 * sin(Mm + 2.0 * D);
-  dlon += 0.046 * sin(2.0 * D - Ms);
-  dlon += 0.041 * sin(Mm - Ms);
-  dlon += -0.035 * sin(D);
-  dlon += -0.031 * sin(Mm + Ms);
-  dlon += -0.015 * sin(2.0 * F - 2.0 * D);
-  dlon += 0.011 * sin(Mm - 4.0 * D);
-  moonLon = normalizeDegrees(moonLon * MOON_RAD_TO_DEG + dlon);
-  // ===================================================
-  // ЭЛОНГАЦИЯ ЛУНЫ ОТ СОЛНЦА
-  // 0°   = NEW
-  // 90°  = FIRST QUARTER
-  // 180° = FULL
-  // 270° = LAST QUARTER
-  // ===================================================
-  double elongation = normalizeDegrees(moonLon - sunLon);
-  float phase = (float)(elongation / 360.0);
-  // ===================================================
-  // ОСВЕЩЁННОСТЬ
-  // ===================================================
-  float illumination = (float)((1.0 - cos(elongation * MOON_DEG_TO_RAD)) * 50.0);
-  if (illumination < 0.0) {
-    illumination = 0.0;
+  double days = jd - KNOWN_NEW_MOON;
+  double moonAge = fmod(days,SYNODIC_MONTH);
+  if (moonAge < 0) {
+    moonAge += SYNODIC_MONTH;
   }
-  if (illumination > 100.0) {
-    illumination = 100.0;
-  }
-  // ===================================================
-  // НАЗВАНИЕ ФАЗЫ
-  // ===================================================
+  float phase = moonAge / SYNODIC_MONTH;
+  float illumination = (1.0 - cos(2.0 * PI * phase)) * 50.0;
   const char* name;
   if (phase < 0.0625 || phase >= 0.9375) {
     name = "NEW";
@@ -698,59 +507,36 @@ MoonInfo getMoonPhase(time_t now) {
 }
 // =====================================================
 // РИСОВАНИЕ ЛУНЫ
-// Реальный эллиптический терминатор.
 // =====================================================
 void drawMoon(int cx,int cy,int r,float phase) {
-  // ---------------------------------------------------
-  // Рамка тёмного диска.
-  // ---------------------------------------------------
-  display.fillCircle(cx,cy,r,SSD1306_BLACK);
-  display.drawCircle(cx,cy,r,SSD1306_WHITE);
-  // ---------------------------------------------------
-  // Новолуние.
-  // ---------------------------------------------------
-  if (phase < 0.01 || phase > 0.99) {
-    return;
-  }
-  // ---------------------------------------------------
-  // Полнолуние.
-  // ---------------------------------------------------
-  if (phase > 0.49 && phase < 0.51) {
-    display.fillCircle(cx,cy,r,SSD1306_WHITE);
+  if (phase < 0.03 || phase > 0.97) {
     display.drawCircle(cx,cy,r,SSD1306_WHITE);
     return;
   }
-  // ---------------------------------------------------
-  // Рисуем освещённую часть горизонтальными линиями.
-  // cos(2*PI*phase) определяет положение терминатора.
-  // ---------------------------------------------------
-  double terminator = cos(2.0 * PI * phase);
-  for (int y = -r;y <= r;y++) {
-    double dy = (double)y;
-    double inside = (double)r * (double)r - dy * dy;
-    if (inside < 0.0) {
-      continue;
-    }
-    int halfWidth = (int)sqrt(inside);
-    int xLeft;
-    int xRight;
-    int terminatorX = (int)(terminator * halfWidth);
-    if (phase < 0.5) {
-      // Растущая Луна: освещена правая сторона.
-      xLeft = terminatorX;
-      xRight = halfWidth;
-    } else {
-      // Убывающая Луна: освещена левая сторона.
-      xLeft = -halfWidth;
-      xRight = -terminatorX;
-    }
-    if (xRight >= xLeft) {
-      display.drawFastHLine(cx + xLeft,cy + y,xRight - xLeft + 1,SSD1306_WHITE);
-    }
+  if (phase > 0.47 && phase < 0.53) {
+    display.fillCircle(cx,cy,r,SSD1306_WHITE);
+    return;
   }
-  // ---------------------------------------------------
-  // Контур диска.
-  // ---------------------------------------------------
+  if (phase >= 0.22 && phase < 0.28) {
+    display.fillCircle(cx,cy,r,SSD1306_WHITE);
+    display.fillRect(cx - r,cy - r,r,r * 2 + 1,SSD1306_BLACK);
+    display.drawCircle(cx,cy,r,SSD1306_WHITE);
+    return;
+  }
+  if (phase >= 0.72 && phase < 0.78) {
+    display.fillCircle(cx,cy,r,SSD1306_WHITE);
+    display.fillRect(cx,cy - r,r + 1,r * 2 + 1,SSD1306_BLACK);
+    display.drawCircle(cx,cy,r,SSD1306_WHITE);
+    return;
+  }
+  if (phase < 0.5) {
+    display.fillCircle(cx,cy,r,SSD1306_WHITE);
+    display.fillCircle(cx - 5,cy,r,SSD1306_BLACK);
+    display.drawCircle(cx,cy,r,SSD1306_WHITE);
+    return;
+  }
+  display.fillCircle(cx,cy,r,SSD1306_WHITE);
+  display.fillCircle(cx + 5,cy,r,SSD1306_BLACK);
   display.drawCircle(cx,cy,r,SSD1306_WHITE);
 }
 // =====================================================
@@ -817,143 +603,9 @@ void drawAnimatedWave() {
   }
 }
 // =====================================================
-// ОБНОВЛЕНИЕ ИСТОРИИ ДАВЛЕНИЯ
-// =====================================================
-void updatePressureHistory(float pressure) {
-  if (isnan(pressure)) {
-    return;
-  }
-  unsigned long now = millis();
-  if (!pressureHistoryStarted) {
-    pressureHistory[0] = pressure;
-    pressureHistoryCount = 1;
-    pressureHistoryStarted = true;
-    lastPressureSample = now;
-    Serial.printf("Pressure graph started: %.1f hPa\n",pressure);
-    return;
-  }
-  if (now - lastPressureSample >= PRESSURE_SAMPLE_INTERVAL) {
-    if (pressureHistoryCount < PRESSURE_HISTORY_SIZE) {
-      pressureHistory[pressureHistoryCount] = pressure;
-      pressureHistoryCount++;
-    } else {
-      for (int i = 0;i < PRESSURE_HISTORY_SIZE - 1;i++) {
-        pressureHistory[i] = pressureHistory[i + 1];
-      }
-      pressureHistory[PRESSURE_HISTORY_SIZE - 1] = pressure;
-    }
-    lastPressureSample = now;
-    Serial.printf("Pressure graph sample %d/%d: %.1f hPa\n",pressureHistoryCount,PRESSURE_HISTORY_SIZE,pressure);
-  }
-}
-// =====================================================
-// ИНДИКАТОР ТРЕНДА ДАВЛЕНИЯ
-// =====================================================
-char getPressureTrend() {
-  if (pressureHistoryCount < 2) {
-    return '-';
-  }
-  float difference = pressureHistory[pressureHistoryCount - 1] - pressureHistory[pressureHistoryCount - 2];
-  if (difference >= PRESSURE_TREND_THRESHOLD) {
-    return '^';
-  }
-  if (difference <= -PRESSURE_TREND_THRESHOLD) {
-    return 'v';
-  }
-  return '-';
-}
-// =====================================================
-// ГРАФИК ДАВЛЕНИЯ ЗА 12 ЧАСОВ
-// =====================================================
-void drawPressureGraph() {
-  const int GRAPH_LEFT = 66;
-  const int GRAPH_RIGHT = 127;
-  const int GRAPH_TOP = 48;
-  const int GRAPH_BOTTOM = 63;
-  const int GRAPH_WIDTH = GRAPH_RIGHT - GRAPH_LEFT;
-  const int GRAPH_HEIGHT = GRAPH_BOTTOM - GRAPH_TOP;
-  display.setTextSize(1);
-  display.setCursor(67,39);
-  display.print("P 12h");
-  char trend = getPressureTrend();
-  if (trend == '^') {
-    display.setCursor(103,39);
-    display.print("^");
-  } else if (trend == 'v') {
-    display.setCursor(103,39);
-    display.print("v");
-  } else if (trend == '-') {
-    display.setCursor(103,39);
-    display.print("-");
-  }
-  if (pressureHistoryCount <= 0) {
-    return;
-  }
-  float minPressure = pressureHistory[0];
-  float maxPressure = pressureHistory[0];
-  for (int i = 1;i < pressureHistoryCount;i++) {
-    if (pressureHistory[i] < minPressure) {
-      minPressure = pressureHistory[i];
-    }
-    if (pressureHistory[i] > maxPressure) {
-      maxPressure = pressureHistory[i];
-    }
-  }
-  if (maxPressure - minPressure < 1.0) {
-    float center = (maxPressure + minPressure) * 0.5;
-    minPressure = center - 0.5;
-    maxPressure = center + 0.5;
-  } else {
-    float padding = (maxPressure - minPressure) * 0.15;
-    minPressure -= padding;
-    maxPressure += padding;
-  }
-  int previousX = GRAPH_RIGHT;
-  int previousY = GRAPH_BOTTOM - (int)(((pressureHistory[pressureHistoryCount - 1] - minPressure) / (maxPressure - minPressure)) * GRAPH_HEIGHT);
-  if (previousY < GRAPH_TOP) {
-    previousY = GRAPH_TOP;
-  }
-  if (previousY > GRAPH_BOTTOM) {
-    previousY = GRAPH_BOTTOM;
-  }
-  if (pressureHistoryCount == 1) {
-    if (pressureBlinkState) {
-      display.fillRect(GRAPH_RIGHT - 1,previousY - 1,2,2,SSD1306_WHITE);
-    }
-    return;
-  }
-  for (int i = pressureHistoryCount - 2;i >= 0;i--) {
-    int x = GRAPH_LEFT + ((GRAPH_WIDTH * i) / (pressureHistoryCount - 1));
-    int y = GRAPH_BOTTOM - (int)(((pressureHistory[i] - minPressure) / (maxPressure - minPressure)) * GRAPH_HEIGHT);
-    if (y < GRAPH_TOP) {
-      y = GRAPH_TOP;
-    }
-    if (y > GRAPH_BOTTOM) {
-      y = GRAPH_BOTTOM;
-    }
-    display.drawLine(x,y,previousX,previousY,SSD1306_WHITE);
-    previousX = x;
-    previousY = y;
-  }
-  int lastX = GRAPH_RIGHT;
-  int lastY = GRAPH_BOTTOM - (int)(((pressureHistory[pressureHistoryCount - 1] - minPressure) / (maxPressure - minPressure)) * GRAPH_HEIGHT);
-  if (lastY < GRAPH_TOP) {
-    lastY = GRAPH_TOP;
-  }
-  if (lastY > GRAPH_BOTTOM) {
-    lastY = GRAPH_BOTTOM;
-  }
-  if (pressureBlinkState) {
-    display.fillRect(lastX - 1,lastY - 1,2,2,SSD1306_WHITE);
-  }
-}
-// =====================================================
 // ОБНОВЛЕНИЕ ДИСПЛЕЯ
 // =====================================================
 void updateDisplay() {
-  // ===================================================
-  // СЧИТЫВАНИЕ ДАТЧИКОВ
-  // ===================================================
   float temperature = NAN;
   float humidity = NAN;
   float pressure = NAN;
@@ -970,9 +622,6 @@ void updateDisplay() {
       temperature = bmp.readTemperature();
     }
   }
-  // ===================================================
-  // КАЛИБРОВОЧНЫЕ ПОПРАВКИ
-  // ===================================================
   if (!isnan(temperature)) {
     temperature += temperatureOffset;
   }
@@ -982,55 +631,27 @@ void updateDisplay() {
   if (!isnan(pressure)) {
     pressure += pressureOffset;
   }
-  // ===================================================
-  // ГРАФИК ДАВЛЕНИЯ
-  // ===================================================
-  updatePressureHistory(pressure);
-  // ===================================================
-  // WIFI
-  // ===================================================
   bool currentWifi = WiFi.status() == WL_CONNECTED;
-  wifiConnected = currentWifi;
-  // ===================================================
-  // ВРЕМЯ
-  // ===================================================
+  if (currentWifi) {
+    wifiConnected = true;
+    updateNTPStatus();
+  } else {
+    wifiConnected = false;
+  }
   char dateStr[9] = "";
   char dayStr[4] = "";
   char timeStr[6] = "";
   struct tm timeinfo;
-  bool timeValid = false;
-  // ---------------------------------------------------
-  // Если NTP уже подтверждён,
-  // getLocalTime() выполняется без ожидания.
-  // ---------------------------------------------------
-  if (ntpTimeValid) {
-    timeValid = getLocalTime(&timeinfo,0);
-  } else if (currentWifi) {
-    timeValid = getLocalTime(&timeinfo,0);
-    if (timeValid) {
-      ntpTimeValid = true;
-    }
-  }
-  // ===================================================
-  // ФОРМАТИРОВАНИЕ ДАТЫ / ВРЕМЕНИ
-  // ===================================================
+  bool timeValid = getLocalTime(&timeinfo,100);
   if (timeValid) {
+    ntpTimeValid = true;
     strftime(dateStr,sizeof(dateStr),"%d-%m-%y",&timeinfo);
     strftime(dayStr,sizeof(dayStr),"%a",&timeinfo);
     strftime(timeStr,sizeof(timeStr),"%H:%M",&timeinfo);
   }
-  // ===================================================
-  // ФАЗА ЛУНЫ
-  // ===================================================
   time_t now = time(nullptr);
   MoonInfo moon = getMoonPhase(now);
-  // ===================================================
-  // SERIAL
-  // ===================================================
-  Serial.printf("%s %s %s  T=%.1fC H=%.1f%% P=%.1fhPa Moon=%s %.0f%% WiFi=%s NTP=%s Graph=%d/12 Trend=%c\n",dateStr,dayStr,timeStr,temperature,humidity,pressure,moon.name,moon.illumination,currentWifi ? "OK" : "OFF",ntpTimeValid ? "OK" : "WAIT",pressureHistoryCount,getPressureTrend());
-  // ===================================================
-  // ОЧИСТКА ЭКРАНА
-  // ===================================================
+  Serial.printf("%s %s %s  T=%.1fC H=%.1f%% P=%.1fhPa Moon=%s %.0f%% WiFi=%s NTP=%s\n",dateStr,dayStr,timeStr,temperature,humidity,pressure,moon.name,moon.illumination,currentWifi ? "OK" : "OFF",ntpTimeValid ? "OK" : "WAIT");
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
@@ -1045,16 +666,6 @@ void updateDisplay() {
     display.setCursor(98,0);
     display.print(timeStr);
     drawAnimatedLine();
-  } else if (currentWifi && !timeValid) {
-    display.setCursor(0,0);
-    display.print("WiFi OK");
-    display.setCursor(48,0);
-    display.print("NTP");
-    int dots = (millis() / 400) % 4;
-    for (int i = 0;i < dots;i++) {
-      display.print(".");
-    }
-    drawAnimatedLine();
   } else if (!currentWifi && wifiAttemptFinished && !ntpTimeValid) {
     drawAnimatedWave();
   }
@@ -1064,9 +675,6 @@ void updateDisplay() {
   display.drawFastVLine(64,16,48,SSD1306_WHITE);
   display.drawFastHLine(0,37,64,SSD1306_WHITE);
   display.drawFastHLine(65,37,63,SSD1306_WHITE);
-  // ===================================================
-  // TEMPERATURE
-  // ===================================================
   display.setTextSize(1);
   display.setCursor(4,17);
   display.print("Temp:");
@@ -1076,46 +684,31 @@ void updateDisplay() {
   } else {
     display.print("--.-C");
   }
-  // ===================================================
-  // PRESSURE + HUMIDITY
-  // ===================================================
-  display.setTextSize(1);
-  display.setCursor(67,17);
-  display.print("P:");
+  display.setCursor(68,16);
+  display.print("Pressure:");
+  display.setCursor(68,27);
   if (!isnan(pressure)) {
-    display.printf("%.0fhPa",pressure);
+    display.printf("%.0f hPa",pressure);
   } else {
-    display.print("--hPa");
+    display.print("-- hPa");
   }
-  display.setCursor(67,28);
-  display.print("H:");
-  if (!isnan(humidity)) {
-    display.printf("%.0f%%",humidity);
-  } else {
-    display.print("--%");
-  }
-  // ===================================================
-  // MOON
-  // ===================================================
   drawMoon(10,51,7,moon.phase);
   display.setCursor(22,45);
   display.print(moon.name);
   display.setCursor(22,55);
   display.printf("%.0f%%",moon.illumination);
   drawMoonIndicator(47,53,moon.phase);
-  // ===================================================
-  // ГРАФИК ДАВЛЕНИЯ
-  // ===================================================
-  drawPressureGraph();
-  // ===================================================
-  // АНИМАЦИЯ ЛИНИИ
-  // ===================================================
+  display.setCursor(68,42);
+  display.print("Humidity:");
+  display.setCursor(68,53);
+  if (!isnan(humidity)) {
+    display.printf("%.0f%%",humidity);
+  } else {
+    display.print("--%");
+  }
   lineProgress += 4;
   if (lineProgress >= SCREEN_WIDTH) {
     lineProgress = 0;
   }
-  // ===================================================
-  // ВЫВОД НА OLED
-  // ===================================================
   display.display();
 }
