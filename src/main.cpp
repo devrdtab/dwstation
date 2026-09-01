@@ -90,7 +90,7 @@ Preferences preferences;
 // =====================================================
 // ГРАФИК ДАВЛЕНИЯ ЗА 12 ЧАСОВ
 // =====================================================
-const int PRESSURE_HISTORY_SIZE = 12;
+const int PRESSURE_HISTORY_SIZE = 13;
 const unsigned long PRESSURE_SAMPLE_INTERVAL = 3600000UL;
 const float PRESSURE_TREND_THRESHOLD = 0.5;
 float pressureHistory[PRESSURE_HISTORY_SIZE];
@@ -866,87 +866,203 @@ char getPressureTrend() {
 // ГРАФИК ДАВЛЕНИЯ ЗА 12 ЧАСОВ
 // =====================================================
 void drawPressureGraph() {
-  const int GRAPH_LEFT = 66;
-  const int GRAPH_RIGHT = 127;
-  const int GRAPH_TOP = 48;
+
+  const int GRAPH_LEFT   = 66;
+  const int GRAPH_RIGHT  = 127;
+  const int GRAPH_TOP    = 48;
   const int GRAPH_BOTTOM = 63;
-  const int GRAPH_WIDTH = GRAPH_RIGHT - GRAPH_LEFT;
+
+  const int GRAPH_WIDTH  = GRAPH_RIGHT - GRAPH_LEFT;
   const int GRAPH_HEIGHT = GRAPH_BOTTOM - GRAPH_TOP;
+
+  // ===================================================
+  // ЗАГОЛОВОК
+  // ===================================================
+
   display.setTextSize(1);
   display.setCursor(67,39);
-  display.print("P 12h");
+
+  int elapsedHours = pressureHistoryCount - 1;
+
+  if (elapsedHours < 0) {
+    elapsedHours = 0;
+  }
+
+  if (elapsedHours > 12) {
+    elapsedHours = 12;
+  }
+
+  display.print("P ");
+  display.print(elapsedHours);
+  display.print("/12h");
+
   char trend = getPressureTrend();
+
+
+
   if (trend == '^') {
-    display.setCursor(103,39);
+    display.setCursor(118,39);
     display.print("^");
-  } else if (trend == 'v') {
-    display.setCursor(103,39);
+  }
+  else if (trend == 'v') {
+    display.setCursor(118,39);
     display.print("v");
-  } else if (trend == '-') {
-    display.setCursor(103,39);
+  }
+  else {
+    display.setCursor(118,39);
     display.print("-");
   }
+
+  // ===================================================
+  // НЕТ ДАННЫХ
+  // ===================================================
+
   if (pressureHistoryCount <= 0) {
     return;
   }
+
+  // ===================================================
+  // MIN / MAX
+  // ===================================================
+
   float minPressure = pressureHistory[0];
   float maxPressure = pressureHistory[0];
-  for (int i = 1;i < pressureHistoryCount;i++) {
+
+  for (int i = 1; i < pressureHistoryCount; i++) {
+
     if (pressureHistory[i] < minPressure) {
       minPressure = pressureHistory[i];
     }
+
     if (pressureHistory[i] > maxPressure) {
       maxPressure = pressureHistory[i];
     }
   }
+
+  // ===================================================
+  // НЕ ДАЁМ ГРАФИКУ СТАТЬ ПЛОСКИМ
+  // ===================================================
+
   if (maxPressure - minPressure < 1.0) {
+
     float center = (maxPressure + minPressure) * 0.5;
+
     minPressure = center - 0.5;
     maxPressure = center + 0.5;
+
   } else {
+
     float padding = (maxPressure - minPressure) * 0.15;
+
     minPressure -= padding;
     maxPressure += padding;
   }
-  int previousX = GRAPH_RIGHT;
-  int previousY = GRAPH_BOTTOM - (int)(((pressureHistory[pressureHistoryCount - 1] - minPressure) / (maxPressure - minPressure)) * GRAPH_HEIGHT);
-  if (previousY < GRAPH_TOP) {
-    previousY = GRAPH_TOP;
-  }
-  if (previousY > GRAPH_BOTTOM) {
-    previousY = GRAPH_BOTTOM;
-  }
-  if (pressureHistoryCount == 1) {
-    if (pressureBlinkState) {
-      display.fillRect(GRAPH_RIGHT - 1,previousY - 1,2,2,SSD1306_WHITE);
-    }
-    return;
-  }
-  for (int i = pressureHistoryCount - 2;i >= 0;i--) {
-    int x = GRAPH_LEFT + ((GRAPH_WIDTH * i) / (pressureHistoryCount - 1));
-    int y = GRAPH_BOTTOM - (int)(((pressureHistory[i] - minPressure) / (maxPressure - minPressure)) * GRAPH_HEIGHT);
+
+  // ===================================================
+  // ФУНКЦИЯ Y
+  // ===================================================
+
+  auto pressureToY = [&](float p) {
+
+    int y = GRAPH_BOTTOM -
+            (int)(((p - minPressure) /
+            (maxPressure - minPressure)) * GRAPH_HEIGHT);
+
     if (y < GRAPH_TOP) {
       y = GRAPH_TOP;
     }
+
     if (y > GRAPH_BOTTOM) {
       y = GRAPH_BOTTOM;
     }
-    display.drawLine(x,y,previousX,previousY,SSD1306_WHITE);
+
+    return y;
+  };
+
+  // ===================================================
+  // РИСОВАНИЕ
+  //
+  // ВАЖНО:
+  // каждая точка занимает фиксированный часовой слот.
+  //
+  // 0 часов  -> LEFT
+  // 1 час    -> LEFT + STEP
+  // ...
+  // 11 часов -> RIGHT
+  // ===================================================
+
+  const int FIRST_POINT_OFFSET = 2;
+
+  const float X_STEP =
+      (float)(GRAPH_WIDTH - FIRST_POINT_OFFSET) /
+      (PRESSURE_HISTORY_SIZE - 1);
+
+
+  // ===================================================
+  // ПЕРВАЯ ТОЧКА
+  // ===================================================
+
+  int previousX = GRAPH_LEFT + FIRST_POINT_OFFSET;
+  int previousY = pressureToY(pressureHistory[0]);
+
+
+  // ===================================================
+  // ОДНА ТОЧКА
+  // ===================================================
+
+  if (pressureHistoryCount == 1) {
+
+    if (pressureBlinkState) {
+      display.fillRect(
+        previousX - 1,
+        previousY - 1,
+        3,
+        3,
+        SSD1306_WHITE
+      );
+    }
+
+    return;
+  }
+
+  // ===================================================
+  // СОЕДИНЯЕМ ТОЧКИ
+  // ===================================================
+
+  for (int i = 1; i < pressureHistoryCount; i++) {
+
+    int x = GRAPH_LEFT + FIRST_POINT_OFFSET + (int)(i * X_STEP);
+    int y = pressureToY(pressureHistory[i]);
+
+
+    display.drawLine(
+      previousX,
+      previousY,
+      x,
+      y,
+      SSD1306_WHITE
+    );
+
     previousX = x;
     previousY = y;
   }
-  int lastX = GRAPH_RIGHT;
-  int lastY = GRAPH_BOTTOM - (int)(((pressureHistory[pressureHistoryCount - 1] - minPressure) / (maxPressure - minPressure)) * GRAPH_HEIGHT);
-  if (lastY < GRAPH_TOP) {
-    lastY = GRAPH_TOP;
-  }
-  if (lastY > GRAPH_BOTTOM) {
-    lastY = GRAPH_BOTTOM;
-  }
+
+  // ===================================================
+  // МИГАЮЩАЯ ПОСЛЕДНЯЯ ТОЧКА
+  // ===================================================
+
   if (pressureBlinkState) {
-    display.fillRect(lastX - 1,lastY - 1,2,2,SSD1306_WHITE);
+
+    display.fillRect(
+      previousX - 1,
+      previousY - 1,
+      3,
+      3,
+      SSD1306_WHITE
+    );
   }
 }
+
 // =====================================================
 // ОБНОВЛЕНИЕ ДИСПЛЕЯ
 // =====================================================
@@ -1047,9 +1163,7 @@ void updateDisplay() {
     drawAnimatedLine();
   } else if (currentWifi && !timeValid) {
     display.setCursor(0,0);
-    display.print("WiFi OK");
-    display.setCursor(48,0);
-    display.print("NTP");
+    display.print("Get timezone.");
     int dots = (millis() / 400) % 4;
     for (int i = 0;i < dots;i++) {
       display.print(".");
@@ -1097,12 +1211,27 @@ void updateDisplay() {
   // ===================================================
   // MOON
   // ===================================================
-  drawMoon(10,51,7,moon.phase);
+// ===================================================
+// MOON
+// ===================================================
+drawMoon(10,51,7,moon.phase);
+
   display.setCursor(22,45);
-  display.print(moon.name);
+  if (!ntpTimeValid) {
+    display.print("");
+  } else {
+    display.print(moon.name);
+  }
   display.setCursor(22,55);
-  display.printf("%.0f%%",moon.illumination);
+  if (!ntpTimeValid) {
+    display.print("...");
+  } else {
+    display.printf("%.0f%%",moon.illumination);
+  }
+  if (ntpTimeValid) {
   drawMoonIndicator(47,53,moon.phase);
+}
+
   // ===================================================
   // ГРАФИК ДАВЛЕНИЯ
   // ===================================================
