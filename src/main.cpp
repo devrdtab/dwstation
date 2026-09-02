@@ -119,6 +119,19 @@ const float PRESSURE_TREND_THRESHOLD = 0.5;
 float pressureHistory[PRESSURE_HISTORY_SIZE];
 int pressureHistoryCount = 0;
 unsigned long lastPressureSample = 0;
+// =====================================================
+// СЧЁТЧИК ОТОБРАЖАЕМОГО 12-ЧАСОВОГО ЦИКЛА
+// =====================================================
+// Сразу после запуска показывается:
+// P 1/12h
+// После каждого полного часа номер увеличивается.
+// После 12 часов:
+// P 12/12h
+// После 13 часов:
+// P 1/12h
+// Этот счётчик влияет ТОЛЬКО на отображение
+// количества часов и не изменяет сам график.
+unsigned long pressureHourCounter = 1;
 bool pressureHistoryStarted = false;
 bool pressureBlinkState = true;
 unsigned long lastPressureBlink = 0;
@@ -1552,7 +1565,6 @@ void drawAnimatedWave() {
 // =====================================================
 // ОБНОВЛЕНИЕ ИСТОРИИ ДАВЛЕНИЯ
 // =====================================================
-int pressureDisplayHour = 0;
 void updatePressureHistory(
   float pressure
 ) {
@@ -1565,7 +1577,7 @@ void updatePressureHistory(
   // ПЕРВАЯ ТОЧКА
   //
   // Сразу после запуска:
-  // P 0/12h
+  // P 1/12h
   // ===================================================
   if (!pressureHistoryStarted) {
     pressureHistory[0] =
@@ -1586,6 +1598,11 @@ void updatePressureHistory(
     now - lastPressureSample >=
     PRESSURE_SAMPLE_INTERVAL
   ) {
+    // =================================================
+    // Увеличиваем ТОЛЬКО счётчик отображения часов.
+    // Сам график работает по старой логике.
+    // =================================================
+    pressureHourCounter++;
     if (
       pressureHistoryCount <
       PRESSURE_HISTORY_SIZE
@@ -1749,19 +1766,21 @@ void drawPressureGraph() {
     39
   );
   // ===================================================
-  // 0 часов сразу после запуска
-  // 1 час через один час
-  // ...
-  // 12 часов через 12 часов
+  // ОТОБРАЖЕНИЕ ТЕКУЩЕГО ЧАСА 12-ЧАСОВОГО ЦИКЛА
+  //
+  // Сразу после запуска:
+  // 1/12h
+  //
+  // Затем:
+  // 2/12h ... 12/12h
+  //
+  // После 12 часов снова:
+  // 1/12h
+  //
+  // Сам массив истории при этом НЕ изменяется.
   // ===================================================
   int elapsedHours =
-    pressureHistoryCount - 1;
-  if (elapsedHours < 0) {
-    elapsedHours = 0;
-  }
-  if (elapsedHours > 12) {
-    elapsedHours = 12;
-  }
+    ((pressureHourCounter - 1) % 12) + 1;
   display.print("P ");
   display.print(elapsedHours);
   display.print("/12h");
@@ -2219,7 +2238,7 @@ void updateDisplay() {
     45
   );
   if (!ntpTimeValid) {
-    display.print("get");
+    display.print("DATA");
   }
   else {
     display.print(
@@ -2240,7 +2259,7 @@ void updateDisplay() {
     55
   );
   if (!ntpTimeValid) {
-    display.print("data..");
+    display.print("N/A");
   }
   else {
     display.printf(
