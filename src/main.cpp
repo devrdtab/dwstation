@@ -1552,6 +1552,7 @@ void drawAnimatedWave() {
 // =====================================================
 // ОБНОВЛЕНИЕ ИСТОРИИ ДАВЛЕНИЯ
 // =====================================================
+int pressureDisplayHour = 0;
 void updatePressureHistory(
   float pressure
 ) {
