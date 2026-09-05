@@ -1,8 +1,8 @@
 #include "RemoteSetup.h"
 #include "WifiConnection.h"
+#include <ESPmDNS.h>
 #include <WebServer.h>
 
-// Порт 8080, а не 80 — на 80-м во время настройки уже сидит сам WiFiManager.
 static WebServer server(8080);
 
 static void handleWifiSetup() {
@@ -13,9 +13,15 @@ static void handleWifiSetup() {
 }
 
 void remoteSetupInit() {
+  if (MDNS.begin("mini-weather")) {
+    Serial.println("mDNS: http://mini-weather.local:8080/wifi-setup");
+  } else {
+    Serial.println("mDNS: не удалось запустить");
+  }
+
   server.on("/wifi-setup", HTTP_GET, handleWifiSetup);
   server.begin();
-  Serial.println("Remote setup: http://<device-ip>:8080/wifi-setup");
+  MDNS.addService("http", "tcp", 8080);
 }
 
 void remoteSetupLoop() { server.handleClient(); }
