@@ -7,6 +7,11 @@
 #include "time/TimeManager.h"
 #include <math.h>
 
+// Процент экрана "Connecting to WiFi" / "Please Setup Wifi" — общий,
+// чтобы бар не прыгал между этапом попытки подключения и этапом ожидания
+// портала.
+static const int WIFI_STAGE_PERCENT = 35;
+
 static void showBootScreen(int percent, const char *status, bool animateDots) {
   int barWidth = map(percent, 0, 100, 0, SCREEN_WIDTH - 8);
   display.clearDisplay();
@@ -45,22 +50,19 @@ static void showBootScreen(int percent, const char *status, bool animateDots) {
 }
 
 static void waitForWifiSetup() {
-  // Портал уже поднят в неблокирующем режиме
+  // Бар и процент зафиксированы на WIFI_STAGE_PERCENT — не бегают туда-сюда.
+  // Двигаются только точки после текста, чтобы было видно, что устройство живо.
   while (!wifiConnected) {
     wifiLoop(); // обязателен .process() для captive portal
-    int pseudoPercent =
-        20 + (int)((millis() / 30) %
-                   60); // "дышащий" бар — реальный % тут не имеет смысла
-    showBootScreen(pseudoPercent, "Please Setup Wifi", true);
+    showBootScreen(WIFI_STAGE_PERCENT, "Please Setup Wifi", true);
     delay(30);
   }
 }
 
 static void waitForNtp() {
   unsigned long start = millis();
-  bool synced = false;
-  while (!synced && millis() - start < NTP_BOOT_TIMEOUT) {
-    synced = ntpUpdateStatus();
+  while (!timeNtpSynced() && millis() - start < NTP_BOOT_TIMEOUT) {
+    timeUpdate();
     int percent = 70 + (int)((millis() - start) * 20UL / NTP_BOOT_TIMEOUT);
     showBootScreen(percent, "Get NTP", true);
     delay(50);
@@ -125,28 +127,37 @@ void bootAnimation() {
   sensorsInit();
   loadCalibration();
   delay(500);
+
+  // Время поднимаем ДО WiFi — с RTC оно есть сразу, даже без сети
+  showBootScreen(25, "Get RTC time...", false);
+  timeInit();
+  delay(500);
+
   wifiInit();
 
   bool alreadySaved = wifiWasSaved();
   const char *connectStatus =
-      alreadySaved ? "Connecting to WiFi..." : "Please Setup Wifi";
-  showBootScreen(20, connectStatus, false);
+      alreadySaved ? "Connecting to WiFi" : "Please Setup Wifi";
+  showBootScreen(WIFI_STAGE_PERCENT, connectStatus, false);
 
-  bool connected = wifiConnectBlocking(); // до 15 сек на сохранённую сеть,
-                                          // иначе сразу открывает портал
+  bool connected = wifiConnectBlocking();
 
   if (!connected) {
-    waitForWifiSetup(); // загрузка не идёт дальше, пока WiFi не настроят через
-                        // портал
+    waitForWifiSetup(); // бар стоит на месте, пока пользователь не настроит
+                        // WiFi через портал
   }
-  ntpStart(); // ← вот эта строка была потеряна — запускает SNTP-клиент
-              // (configTime)
-  showBootScreen(70, "Get NTP", false);
-  waitForNtp();
+
+  if (!timeIsValid()) {
+    showBootScreen(70, "Get NTP", false);
+    waitForNtp();
+  } else {
+    showBootScreen(70, "Time OK", false);
+    delay(400);
+  }
 
   runCalibrationIfNeeded();
 
-  showBootScreen(95, "Almost ready....", false);
+  showBootScreen(95, "Almost ready......", false);
   delay(300);
   showBootScreen(100, "DONE", false);
   delay(300);

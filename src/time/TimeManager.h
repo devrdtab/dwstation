@@ -7,7 +7,8 @@ constexpr int DAYLIGHT_OFFSET_SEC = 0;
 constexpr unsigned long NTP_CHECK_INTERVAL = 1000;
 constexpr unsigned long NTP_BOOT_TIMEOUT = 10000;
 
-extern bool ntpTimeValid;
-
-void ntpStart();          // configTime(...)
-bool ntpUpdateStatus();   // проверка getLocalTime, обновляет ntpTimeValid
+void timeInit();      // RTC → системные часы, настройка часового пояса и SNTP
+bool timeUpdate();    // в loop(): переносит свежее NTP-время в RTC
+bool timeIsValid();   // можно ли доверять текущему времени
+bool timeRtcOk();     // найден ли DS3231
+bool timeNtpSynced(); // было ли хоть одно успешное обращение к NTP
