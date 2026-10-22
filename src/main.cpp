@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <esp_system.h>
 
+#include "battery/Battery.h"
 #include "boot/BootManager.h"
 #include "button/Button.h"
 #include "config/Config.h"
@@ -74,6 +75,7 @@ void setup() {
                 (int)reason);
 
   buttonInit();
+  batteryInit();
   Wire.begin(I2C_SDA, I2C_SCL);
 
   uint8_t oledAddr = findOledAddress();
@@ -109,7 +111,7 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
-
+  batteryUpdate();
   wifiLoop();
   sensorsRetryMissing();
 

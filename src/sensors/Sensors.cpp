@@ -15,10 +15,10 @@ static bool ensOk = false;
 
 static bool mainBusSeen[128];
 
-static void selectMuxChannel(uint8_t channel) {
+static bool selectMuxChannel(uint8_t channel) {
   Wire.beginTransmission(TCA9548A_ADDR);
   Wire.write(1 << channel);
-  Wire.endTransmission();
+  return (Wire.endTransmission() == 0);
 }
 
 static void disableMuxChannels() {
@@ -48,7 +48,6 @@ static void scanI2CBus() {
     Serial.println("  ничего не найдено — проверьте SDA/SCL и питание");
   }
 
-  // Открываем канал и показываем только адреса, которых не было на главной шине
   Serial.println("За мультиплексором (канал 0), новые адреса:");
   int behind = 0;
   selectMuxChannel(TCA9548A_CHANNEL_ENS160);
@@ -148,22 +147,52 @@ void sensorsRead(float &temperature, float &humidity, float &pressure) {
 }
 
 AirQuality sensorsReadAirQuality(float temperature, float humidity) {
-  AirQuality result = {0, 0, 0, ENS_STATUS_STARTUP, false};
-  if (!ensOk)
-    return result;
+  // Библиотека DFRobot_ENS160 не проверяет флаг готовности данных
+  // и периодически отдаёт 0 на отдельных чтениях — это её известная
+  // особенность, а не сбой датчика. Поэтому храним последнее
+  // достоверное значение и используем его, не трогая сам датчик.
+  static AirQuality lastGood = {0, 0, 0, ENS_STATUS_STARTUP, false};
 
-  selectMuxChannel(TCA9548A_CHANNEL_ENS160);
+  AirQuality empty = {0, 0, 0, ENS_STATUS_STARTUP, false};
+  if (!ensOk)
+    return empty;
+
+  if (!selectMuxChannel(TCA9548A_CHANNEL_ENS160)) {
+    disableMuxChannels();
+    Serial.println("ENS160: мультиплексор не ответил, потеря связи");
+    ensOk = false; // восстановлением займётся sensorsRetryMissing()
+    return lastGood.valid ? lastGood : empty;
+  }
 
   if (!isnan(temperature) && !isnan(humidity)) {
     ens160.setTempAndHum(temperature, humidity);
   }
 
-  result.status = ens160.getENS160Status();
-  result.eco2 = ens160.getECO2();
-  result.tvoc = ens160.getTVOC();
-  result.aqi = ens160.getAQI();
-  result.valid = (result.status == ENS_STATUS_NORMAL);
+  uint8_t status = ens160.getENS160Status();
+  uint16_t eco2 = ens160.getECO2();
+  uint16_t tvoc = ens160.getTVOC();
+  uint8_t aqi = ens160.getAQI();
 
   disableMuxChannels();
+
+  if (status == ENS_STATUS_WARMUP || status == ENS_STATUS_STARTUP) {
+    AirQuality warming = {0, 0, 0, status, false};
+    return warming;
+  }
+
+  bool plausible = (status == ENS_STATUS_NORMAL) && (eco2 != 0);
+  if (!plausible) {
+    // Та самая особенность библиотеки — просто ждём следующий цикл
+    return lastGood.valid ? lastGood : empty;
+  }
+
+  AirQuality result;
+  result.status = status;
+  result.eco2 = eco2;
+  result.tvoc = tvoc;
+  result.aqi = aqi;
+  result.valid = true;
+
+  lastGood = result;
   return result;
 }

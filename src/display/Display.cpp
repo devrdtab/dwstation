@@ -1,4 +1,5 @@
 #include "Display.h"
+#include "battery/Battery.h"
 #include "calibration/Calibration.h"
 #include "config/Config.h"
 #include "moon/MoonPhase.h"
@@ -12,15 +13,13 @@
 
 Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// Последние измерения (обновляются всегда, даже когда экран погашен)
 static float lastTemperature = NAN;
 static float lastHumidity = NAN;
 static float lastPressure = NAN;
 static AirQuality lastAir = {0, 0, 0, ENS_STATUS_STARTUP, false};
 
-// Состояние экрана
-static bool displayOn = true; // после загрузки экран включён
-static int screenPage = 0;    // 0 = показания, 1 = качество воздуха
+static bool displayOn = true;
+static int screenPage = 0;
 static unsigned long screenTimerStart = 0;
 
 static int lineProgress = 0;
@@ -49,6 +48,11 @@ static const char *aqiLabel(uint8_t aqi) {
   default:
     return "--";
   }
+}
+
+static void drawBatteryIndicator() {
+  display.setCursor(104, 0);
+  display.printf("%3d%%", batteryPercent());
 }
 
 static void drawMainPage(float temperature, float humidity, float pressure,
@@ -135,8 +139,6 @@ static void setPanelPower(bool on) {
   display.oled_command(on ? SH110X_DISPLAYON : SH110X_DISPLAYOFF);
 }
 
-// ========== ИЗМЕРЕНИЯ (работают всегда, независимо от экрана) ==========
-
 void updateMeasurements() {
   float temperature = NAN, humidity = NAN, pressure = NAN;
   sensorsRead(temperature, humidity, pressure);
@@ -173,14 +175,13 @@ void updateMeasurements() {
   bool currentWifi = (WiFi.status() == WL_CONNECTED);
 
   Serial.printf("%s %s %s  T=%.1fC H=%.1f%% P=%.1fhPa CO2=%u TVOC=%u AQI=%u "
-                "Moon=%s %.0f%% WiFi=%s RTC=%s Screen=%s\n",
+                "Moon=%s %.0f%% WiFi=%s RTC=%s Batt=%d%%(%.2fV) Screen=%s\n",
                 dateStr, dayStr, timeStr, temperature, humidity, pressure,
                 air.eco2, air.tvoc, air.aqi, moon.name, moon.illumination,
                 currentWifi ? "OK" : "OFF", timeRtcOk() ? "OK" : "OFF",
+                batteryPercent(), batteryVoltage(),
                 displayOn ? (screenPage == 0 ? "ON-1" : "ON-2") : "OFF");
 }
-
-// ========== ОТРИСОВКА ==========
 
 void renderScreen() {
   if (!displayOn)
@@ -206,19 +207,21 @@ void renderScreen() {
   display.setTextColor(SH110X_WHITE);
   display.setTextSize(1);
 
-  // ВЕРХНЯЯ СТРОКА — одинакова на обоих экранах
+  // ВЕРХНЯЯ СТРОКА: дата, день, время, заряд батареи
   if (clockOk) {
     display.setCursor(0, 0);
     display.print(dateStr);
-    display.setCursor(55, 0);
+    display.setCursor(50, 0);
     display.print(dayStr);
-    display.setCursor(98, 0);
+    display.setCursor(70, 0);
     display.print(timeStr);
   } else {
     display.setCursor(0, 0);
     display.print("No time");
   }
+  drawBatteryIndicator();
 
+  // ВТОРАЯ СТРОКА — статус WiFi/портала
   if (wifiIsPortalActive()) {
     display.setCursor(0, 10);
     display.print("Setup: Meteo WiFi");
@@ -241,14 +244,12 @@ void renderScreen() {
   display.display();
 }
 
-// ========== УПРАВЛЕНИЕ ЭКРАНОМ ==========
-
 void displayWake() {
   screenPage = 0;
   screenTimerStart = millis();
   if (!displayOn) {
     displayOn = true;
-    renderScreen(); // сначала рисуем свежий кадр, потом включаем панель
+    renderScreen();
     setPanelPower(true);
   } else {
     renderScreen();

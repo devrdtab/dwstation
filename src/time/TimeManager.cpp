@@ -10,7 +10,6 @@ static bool clockValid = false;
 static bool ntpSynced = false;
 static volatile bool ntpSyncPending = false;
 
-// Вызывается ядром ESP-IDF, когда SNTP получил время
 static void onNtpSync(struct timeval *tv) { ntpSyncPending = true; }
 
 void timeInit() {
@@ -30,6 +29,17 @@ void timeInit() {
   }
 
   DateTime nowUtc = rtc.now();
+
+  // Защита от сбоя чтения по I2C: если год совсем неправдоподобный,
+  // это битые данные, а не реальное время — не доверяем им
+  if (nowUtc.year() < 2024 || nowUtc.year() > 2099) {
+    Serial.printf("DS3231: прочитано неправдоподобное время (%04d-%02d-%02d), "
+                  "похоже на сбой чтения. Ждём NTP.\n",
+                  nowUtc.year(), nowUtc.month(), nowUtc.day());
+    clockValid = false;
+    return;
+  }
+
   struct timeval tv;
   tv.tv_sec = (time_t)nowUtc.unixtime();
   tv.tv_usec = 0;
@@ -42,8 +52,6 @@ void timeInit() {
 }
 
 void timeStartNtp() {
-  // Повторный configTime перезапускает SNTP и сразу делает новый запрос —
-  // нужен, потому что первый вызов в timeInit() происходит ещё без WiFi
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
   Serial.println("SNTP перезапущен после подключения к WiFi.");
 }

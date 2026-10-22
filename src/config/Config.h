@@ -56,3 +56,14 @@ const unsigned long CALIBRATION_WARMUP = 3000;
 const unsigned long WIFI_RESYNC_INTERVAL_MS =
     7UL * 24UL * 3600UL * 1000UL; // раз в неделю
 const unsigned long WIFI_SYNC_CONNECT_TIMEOUT_MS = 15000;
+
+// БАТАРЕЯ И ПИТАНИЕ (нужна плата GREATZT + 2 делителя напряжения 100к/100к)
+#define BATTERY_VOLTAGE_PIN 1 // ADC: напряжение батареи через делитель
+#define BATTERY_CHARGE_SENSE_PIN                                               \
+  7 // цифровой: HIGH, если на входе GREATZT есть сеть
+
+const float BATTERY_DIVIDER_RATIO =
+    2.0; // делитель 100к/100к занижает напряжение вдвое
+const float BATTERY_EMPTY_V = 3.3; // напряжение батареи, которое считаем 0%
+const float BATTERY_FULL_V = 4.2;  // напряжение батареи, которое считаем 100%
+const unsigned long BATTERY_UPDATE_INTERVAL = 2000; // как часто опрашивать
