@@ -16,7 +16,7 @@ Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 static float lastTemperature = NAN;
 static float lastHumidity = NAN;
 static float lastPressure = NAN;
-static AirQuality lastAir = {0, 0, 0, ENS_STATUS_STARTUP, false};
+static AirQuality lastAir = {0, 0, 0, ENS_STATUS_STARTUP, false, false};
 
 static bool displayOn = true;
 static int screenPage = 0;
@@ -106,32 +106,50 @@ static void drawAirPage(const AirQuality &air) {
   display.print("AIR QUALITY");
   display.drawFastHLine(0, 28, SCREEN_WIDTH, SH110X_WHITE);
 
+  // display.setCursor(80, 18);
+
+  // if (!air.commOk) {
+  //   display.print("NO I2C");
+  // } else if (air.status == ENS_STATUS_STARTUP) {
+  //   display.print("START");
+  // } else if (air.status == ENS_STATUS_WARMUP) {
+  //   display.print("WARM");
+  // } else if (air.valid) {
+  //   display.print("READY");
+  // } else {
+  //   display.print("WAIT");
+  // }
+
   display.setCursor(0, 32);
   display.print("CO2 :");
-  if (air.valid)
+  if (air.valid) {
     display.printf("%u ppm", air.eco2);
-  else
-    display.print("---- ppm");
+  } else {
+    display.print("-- ppm");
+  }
 
   display.setCursor(0, 42);
   display.print("TVOC:");
-  if (air.valid)
+  if (air.valid) {
     display.printf("%u ppb", air.tvoc);
-  else
-    display.print("---- ppb");
+  } else {
+    display.print("-- ppb");
+  }
 
   display.setCursor(0, 52);
+
   if (air.valid) {
-    display.print("AQI :");
-    display.print(air.aqi);
-    display.print(" ");
-    display.print(aqiLabel(air.aqi));
+    display.printf("AQI :%u %s", air.aqi, aqiLabel(air.aqi));
+  } else if (!air.commOk) {
+    display.print("ENS160: no response");
   } else if (air.status == ENS_STATUS_WARMUP) {
     display.print("Sensor warming up");
   } else if (air.status == ENS_STATUS_STARTUP) {
     display.print("Initial start-up");
+  } else if (air.status == ENS_STATUS_INVALID) {
+    display.print("Invalid measurements");
   } else {
-    display.print("No sensor data");
+    display.print("Waiting for valid data");
   }
 }
 
@@ -140,13 +158,18 @@ static void setPanelPower(bool on) {
 }
 
 void updateMeasurements() {
-  float temperature = NAN, humidity = NAN, pressure = NAN;
+  float temperature = NAN;
+  float humidity = NAN;
+  float pressure = NAN;
+
   sensorsRead(temperature, humidity, pressure);
 
   if (!isnan(temperature))
     temperature += temperatureOffset;
+
   if (!isnan(humidity))
     humidity += humidityOffset;
+
   if (!isnan(pressure))
     pressure += pressureOffset;
 
@@ -162,6 +185,7 @@ void updateMeasurements() {
   char dateStr[9] = "";
   char dayStr[4] = "";
   char timeStr[6] = "";
+
   struct tm timeinfo;
   bool clockOk = timeIsValid() && getLocalTime(&timeinfo, 0);
 
@@ -172,12 +196,19 @@ void updateMeasurements() {
   }
 
   MoonInfo moon = getMoonPhase(time(nullptr));
-  bool currentWifi = (WiFi.status() == WL_CONNECTED);
+  bool currentWifi = WiFi.status() == WL_CONNECTED;
 
-  Serial.printf("%s %s %s  T=%.1fC H=%.1f%% P=%.1fhPa CO2=%u TVOC=%u AQI=%u "
-                "Moon=%s %.0f%% WiFi=%s RTC=%s Batt=%d%%(%.2fV) Screen=%s\n",
+  const char *airStatus = !air.commOk ? "NoComm"
+                          : air.valid ? "Normal"
+                                      : ensStatusName(air.status);
+
+  Serial.printf("%s %s %s T=%.1fC H=%.1f%% P=%.1fhPa "
+                "ENS=%s CO2=%u TVOC=%u AQI=%u "
+                "Moon=%s %.0f%% WiFi=%s RTC=%s "
+                "Batt=%d%%(%.2fV) Screen=%s\n",
                 dateStr, dayStr, timeStr, temperature, humidity, pressure,
-                air.eco2, air.tvoc, air.aqi, moon.name, moon.illumination,
+                airStatus, air.valid ? air.eco2 : 0, air.valid ? air.tvoc : 0,
+                air.valid ? air.aqi : 0, moon.name, moon.illumination,
                 currentWifi ? "OK" : "OFF", timeRtcOk() ? "OK" : "OFF",
                 batteryPercent(), batteryVoltage(),
                 displayOn ? (screenPage == 0 ? "ON-1" : "ON-2") : "OFF");
@@ -221,16 +252,6 @@ void renderScreen() {
   }
   drawBatteryIndicator();
 
-  // ВТОРАЯ СТРОКА — статус WiFi/портала
-  // if (wifiIsPortalActive()) {
-  //   display.setCursor(0, 10);
-  //   display.print("Setup: Meteo WiFi");
-  // } else if (currentWifi) {
-  //   drawAnimatedLine();
-  // } else {
-  //   display.setCursor(0, 10);
-  //   display.print("No WiFi");
-  // }
   // ВТОРАЯ СТРОКА — только предупреждение о портале, иначе просто линия
   if (wifiIsPortalActive()) {
     display.setCursor(0, 10);

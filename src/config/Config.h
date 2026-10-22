@@ -44,10 +44,11 @@ const unsigned long SENSOR_RETRY_INTERVAL = 10000;
 
 // КАЛИБРОВКА
 const float REFERENCE_TEMPERATURE = 25.0;
-const float REFERENCE_HUMIDITY = 48.0;
+const float REFERENCE_HUMIDITY = 70.0;
 const float REFERENCE_PRESSURE = 1016.0;
 
-const bool RESET_CALIBRATION = false;
+const bool RESET_CALIBRATION =
+    false; // true — сбросить калибровку при старте (для тестов)
 
 const int CALIBRATION_SAMPLES = 10;
 const unsigned long CALIBRATION_INTERVAL = 500;
