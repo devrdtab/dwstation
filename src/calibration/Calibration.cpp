@@ -13,8 +13,9 @@ void loadCalibration() {
   bool saved = preferences.getBool("valid", false);
   if (saved) {
     temperatureOffset = preferences.getFloat("tempOff", 0.0);
-    humidityOffset = preferences.getFloat("humOff", 0.0);
+    humidityOffset = 0.0; // Отключаем калибровку влажности
     pressureOffset = preferences.getFloat("pressOff", 0.0);
+    preferences.putFloat("humOff", 0.0);
     Serial.println();
     Serial.println("Калибровка загружена из Flash:");
     Serial.printf("Temperature offset: %.2f C\n", temperatureOffset);
@@ -51,7 +52,8 @@ void showCalibrationProgress(int sample, int total) {
   display.print(total);
   int width = map(sample, 0, total, 0, 120);
   display.drawRect(4, 35, 120, 10, SSD1306_WHITE);
-  if (width > 2) display.fillRect(6, 37, width - 2, 6, SSD1306_WHITE);
+  if (width > 2)
+    display.fillRect(6, 37, width - 2, 6, SSD1306_WHITE);
   display.setCursor(0, 55);
   display.print("Please wait...");
   display.display();
