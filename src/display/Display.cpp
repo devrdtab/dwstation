@@ -196,7 +196,7 @@ void renderScreen() {
   bool clockOk = timeIsValid() && getLocalTime(&timeinfo, 0);
 
   if (clockOk) {
-    strftime(dateStr, sizeof(dateStr), "%d.%m%y", &timeinfo);
+    strftime(dateStr, sizeof(dateStr), "%d.%m.%y", &timeinfo);
     strftime(dayStr, sizeof(dayStr), "%a", &timeinfo);
     strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
   }
@@ -219,13 +219,6 @@ void renderScreen() {
   //   display.setCursor(0, 0);
   //   display.print("No time");
   // }
-  // ВТОРАЯ СТРОКА — только предупреждение о портале, иначе просто линия
-  if (wifiIsPortalActive()) {
-    display.setCursor(0, 10);
-    display.print("Setup: Meteo WiFi");
-  } else {
-    drawAnimatedLine();
-  }
   drawBatteryIndicator();
 
   // ВТОРАЯ СТРОКА — статус WiFi/портала
