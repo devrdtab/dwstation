@@ -208,28 +208,35 @@ void renderScreen() {
   display.setTextSize(1);
 
   // ВЕРХНЯЯ СТРОКА: дата, день, время, заряд батареи
-  // if (clockOk) {
-  //   display.setCursor(0, 0);
-  //   display.print(dateStr);
-  //   display.setCursor(50, 0);
-  //   display.print(dayStr);
-  //   display.setCursor(70, 0);
-  //   display.print(timeStr);
-  // } else {
-  //   display.setCursor(0, 0);
-  //   display.print("No time");
-  // }
+  if (clockOk) {
+    display.setCursor(0, 0);
+    display.print(dateStr);
+    display.setCursor(50, 0);
+    display.print(dayStr);
+    display.setCursor(70, 0);
+    display.print(timeStr);
+  } else {
+    display.setCursor(0, 0);
+    display.print("No time");
+  }
   drawBatteryIndicator();
 
   // ВТОРАЯ СТРОКА — статус WiFi/портала
+  // if (wifiIsPortalActive()) {
+  //   display.setCursor(0, 10);
+  //   display.print("Setup: Meteo WiFi");
+  // } else if (currentWifi) {
+  //   drawAnimatedLine();
+  // } else {
+  //   display.setCursor(0, 10);
+  //   display.print("No WiFi");
+  // }
+  // ВТОРАЯ СТРОКА — только предупреждение о портале, иначе просто линия
   if (wifiIsPortalActive()) {
     display.setCursor(0, 10);
     display.print("Setup: Meteo WiFi");
-  } else if (currentWifi) {
-    drawAnimatedLine();
   } else {
-    display.setCursor(0, 10);
-    display.print("No WiFi");
+    drawAnimatedLine();
   }
 
   if (screenPage == 0)
