@@ -166,7 +166,7 @@ void updateMeasurements() {
   bool clockOk = timeIsValid() && getLocalTime(&timeinfo, 0);
 
   if (clockOk) {
-    strftime(dateStr, sizeof(dateStr), "%d-%m-%y", &timeinfo);
+    strftime(dateStr, sizeof(dateStr), "%d.%m.%y", &timeinfo);
     strftime(dayStr, sizeof(dayStr), "%a", &timeinfo);
     strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
   }
@@ -196,7 +196,7 @@ void renderScreen() {
   bool clockOk = timeIsValid() && getLocalTime(&timeinfo, 0);
 
   if (clockOk) {
-    strftime(dateStr, sizeof(dateStr), "%d-%m-%y", &timeinfo);
+    strftime(dateStr, sizeof(dateStr), "%d.%m.%y", &timeinfo);
     strftime(dayStr, sizeof(dayStr), "%a", &timeinfo);
     strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
   }
