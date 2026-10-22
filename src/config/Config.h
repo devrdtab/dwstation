@@ -21,11 +21,23 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
-// ОБНОВЛЕНИЕ ЭКРАНА
+// ОБНОВЛЕНИЕ ДАННЫХ (датчики, лог, перерисовка)
 const unsigned long UPDATE_INTERVAL = 1000;
 
-// ПЕРЕКЛЮЧЕНИЕ СТРАНИЦ (показания / качество воздуха)
-const unsigned long SCREEN_PAGE_INTERVAL = 5000;
+// ===== КНОПКА И ЭКРАН =====
+#define BUTTON_PIN 3 // контакт кнопки → GPIO3, второй контакт → GND
+#define LED_PIN                                                                \
+  6 // светодиод кнопки: «+» через резистор 330 Ом → GPIO6, «−» → GND
+
+const unsigned long SCREEN_ON_TIME_MS =
+    10000; // сколько экран остаётся включённым
+const unsigned long LONG_PRESS_MS =
+    500; // длительное нажатие переключает экраны
+const unsigned long BUTTON_DEBOUNCE_MS = 30; // защита от дребезга контактов
+
+const unsigned long LED_BLINK_PERIOD_MS =
+    20000; // период мигания светодиода в ожидании
+const unsigned long LED_BLINK_ON_MS = 20; // длительность одной вспышки
 
 // ПОВТОРНЫЙ ПОИСК ДАТЧИКОВ, ПОКА КАКОЙ-ТО НЕ НАЙДЕН
 const unsigned long SENSOR_RETRY_INTERVAL = 10000;

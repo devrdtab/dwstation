@@ -12,16 +12,25 @@
 
 Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
+// Последние измерения (обновляются всегда, даже когда экран погашен)
+static float lastTemperature = NAN;
+static float lastHumidity = NAN;
+static float lastPressure = NAN;
+static AirQuality lastAir = {0, 0, 0, ENS_STATUS_STARTUP, false};
+
+// Состояние экрана
+static bool displayOn = true; // после загрузки экран включён
+static int screenPage = 0;    // 0 = показания, 1 = качество воздуха
+static unsigned long screenTimerStart = 0;
+
 static int lineProgress = 0;
-static int screenPage = 0;
-static unsigned long lastPageSwitch = 0;
 
 static void drawAnimatedLine() {
   for (int x = 0; x < SCREEN_WIDTH; x += 4) {
-    display.drawFastHLine(x, 10, 2, SSD1306_WHITE);
+    display.drawFastHLine(x, 10, 2, SH110X_WHITE);
   }
   if (lineProgress > 0) {
-    display.drawFastHLine(0, 10, lineProgress, SSD1306_WHITE);
+    display.drawFastHLine(0, 10, lineProgress, SH110X_WHITE);
   }
 }
 
@@ -44,9 +53,9 @@ static const char *aqiLabel(uint8_t aqi) {
 
 static void drawMainPage(float temperature, float humidity, float pressure,
                          const MoonInfo &moon) {
-  display.drawFastVLine(64, 16, 48, SSD1306_WHITE);
-  display.drawFastHLine(0, 37, 64, SSD1306_WHITE);
-  display.drawFastHLine(65, 37, 63, SSD1306_WHITE);
+  display.drawFastVLine(64, 16, 48, SH110X_WHITE);
+  display.drawFastHLine(0, 37, 64, SH110X_WHITE);
+  display.drawFastHLine(65, 37, 63, SH110X_WHITE);
 
   display.setCursor(4, 17);
   display.print("Temp:");
@@ -91,7 +100,7 @@ static void drawMainPage(float temperature, float humidity, float pressure,
 static void drawAirPage(const AirQuality &air) {
   display.setCursor(0, 18);
   display.print("AIR QUALITY");
-  display.drawFastHLine(0, 28, SCREEN_WIDTH, SSD1306_WHITE);
+  display.drawFastHLine(0, 28, SCREEN_WIDTH, SH110X_WHITE);
 
   display.setCursor(0, 32);
   display.print("CO2 :");
@@ -122,7 +131,13 @@ static void drawAirPage(const AirQuality &air) {
   }
 }
 
-void updateDisplay() {
+static void setPanelPower(bool on) {
+  display.oled_command(on ? SH110X_DISPLAYON : SH110X_DISPLAYOFF);
+}
+
+// ========== ИЗМЕРЕНИЯ (работают всегда, независимо от экрана) ==========
+
+void updateMeasurements() {
   float temperature = NAN, humidity = NAN, pressure = NAN;
   sensorsRead(temperature, humidity, pressure);
 
@@ -137,8 +152,10 @@ void updateDisplay() {
 
   AirQuality air = sensorsReadAirQuality(temperature, humidity);
 
-  bool currentWifi = (WiFi.status() == WL_CONNECTED);
-  wifiConnected = currentWifi;
+  lastTemperature = temperature;
+  lastHumidity = humidity;
+  lastPressure = pressure;
+  lastAir = air;
 
   char dateStr[9] = "";
   char dayStr[4] = "";
@@ -152,26 +169,44 @@ void updateDisplay() {
     strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
   }
 
-  time_t now = time(nullptr);
-  MoonInfo moon = getMoonPhase(now);
+  MoonInfo moon = getMoonPhase(time(nullptr));
+  bool currentWifi = (WiFi.status() == WL_CONNECTED);
 
   Serial.printf("%s %s %s  T=%.1fC H=%.1f%% P=%.1fhPa CO2=%u TVOC=%u AQI=%u "
-                "Moon=%s %.0f%% WiFi=%s RTC=%s\n",
+                "Moon=%s %.0f%% WiFi=%s RTC=%s Screen=%s\n",
                 dateStr, dayStr, timeStr, temperature, humidity, pressure,
                 air.eco2, air.tvoc, air.aqi, moon.name, moon.illumination,
-                currentWifi ? "OK" : "OFF", timeRtcOk() ? "OK" : "OFF");
+                currentWifi ? "OK" : "OFF", timeRtcOk() ? "OK" : "OFF",
+                displayOn ? (screenPage == 0 ? "ON-1" : "ON-2") : "OFF");
+}
 
-  // ПЕРЕКЛЮЧЕНИЕ СТРАНИЦ
-  if (millis() - lastPageSwitch >= SCREEN_PAGE_INTERVAL) {
-    lastPageSwitch = millis();
-    screenPage = (screenPage + 1) % 2;
+// ========== ОТРИСОВКА ==========
+
+void renderScreen() {
+  if (!displayOn)
+    return;
+
+  bool currentWifi = (WiFi.status() == WL_CONNECTED);
+
+  char dateStr[9] = "";
+  char dayStr[4] = "";
+  char timeStr[6] = "";
+  struct tm timeinfo;
+  bool clockOk = timeIsValid() && getLocalTime(&timeinfo, 0);
+
+  if (clockOk) {
+    strftime(dateStr, sizeof(dateStr), "%d-%m-%y", &timeinfo);
+    strftime(dayStr, sizeof(dayStr), "%a", &timeinfo);
+    strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
   }
 
+  MoonInfo moon = getMoonPhase(time(nullptr));
+
   display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
+  display.setTextColor(SH110X_WHITE);
   display.setTextSize(1);
 
-  // ВЕРХНЯЯ СТРОКА — одинакова на обеих страницах
+  // ВЕРХНЯЯ СТРОКА — одинакова на обоих экранах
   if (clockOk) {
     display.setCursor(0, 0);
     display.print(dateStr);
@@ -195,9 +230,9 @@ void updateDisplay() {
   }
 
   if (screenPage == 0)
-    drawMainPage(temperature, humidity, pressure, moon);
+    drawMainPage(lastTemperature, lastHumidity, lastPressure, moon);
   else
-    drawAirPage(air);
+    drawAirPage(lastAir);
 
   lineProgress += 4;
   if (lineProgress >= SCREEN_WIDTH)
@@ -205,3 +240,42 @@ void updateDisplay() {
 
   display.display();
 }
+
+// ========== УПРАВЛЕНИЕ ЭКРАНОМ ==========
+
+void displayWake() {
+  screenPage = 0;
+  screenTimerStart = millis();
+  if (!displayOn) {
+    displayOn = true;
+    renderScreen(); // сначала рисуем свежий кадр, потом включаем панель
+    setPanelPower(true);
+  } else {
+    renderScreen();
+  }
+}
+
+void displayToggleScreenPage() {
+  if (!displayOn)
+    return;
+  screenPage = (screenPage + 1) % 2;
+  screenTimerStart = millis();
+  renderScreen();
+}
+
+void displayExtendTimer() {
+  if (!displayOn)
+    return;
+  screenTimerStart = millis();
+}
+
+void displayTick() {
+  if (displayOn && millis() - screenTimerStart >= SCREEN_ON_TIME_MS) {
+    displayOn = false;
+    display.clearDisplay();
+    display.display();
+    setPanelPower(false);
+  }
+}
+
+bool displayIsOn() { return displayOn; }

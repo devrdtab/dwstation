@@ -4,6 +4,7 @@
 #include <esp_system.h>
 
 #include "boot/BootManager.h"
+#include "button/Button.h"
 #include "config/Config.h"
 #include "display/Display.h"
 #include "network/RemoteSetup.h"
@@ -75,6 +76,7 @@ void setup() {
   Serial.printf("Причина перезапуска: %s (код %d)\n", resetReasonName(reason),
                 (int)reason);
 
+  buttonInit();
   Wire.begin(I2C_SDA, I2C_SCL);
 
   uint8_t oledAddr = findOledAddress();
@@ -100,7 +102,10 @@ void setup() {
 
   remoteSetupInit();
 
-  updateDisplay();
+  // После загрузки: экран 1 на SCREEN_ON_TIME_MS, потом экран гаснет
+  updateMeasurements();
+  displayWake();
+
   lastUpdate = millis();
   lastTimeCheck = millis();
 }
@@ -112,6 +117,20 @@ void loop() {
   remoteSetupLoop();
   sensorsRetryMissing();
 
+  // КНОПКА
+  ButtonEvent event = buttonUpdate();
+  if (event == BUTTON_EVENT_PRESSED) {
+    if (displayIsOn())
+      displayExtendTimer(); // экран включён — продлеваем
+    else
+      displayWake(); // экран погашен — включаем на экран 1
+  } else if (event == BUTTON_EVENT_LONG_PRESS) {
+    displayToggleScreenPage(); // 2 секунды — переключение экранов
+  }
+
+  displayTick();                  // гасим экран по таймеру
+  buttonLedUpdate(displayIsOn()); // светодиод: мигает в ожидании
+
   if (now - lastTimeCheck >= NTP_CHECK_INTERVAL) {
     lastTimeCheck = now;
     timeUpdate();
@@ -121,6 +140,7 @@ void loop() {
 
   if (now - lastUpdate >= UPDATE_INTERVAL) {
     lastUpdate = now;
-    updateDisplay();
+    updateMeasurements(); // всегда: график давления не должен останавливаться
+    renderScreen();       // рисует, только если экран включён
   }
 }

@@ -13,4 +13,13 @@
 
 extern Adafruit_SH1106G display;
 
-void updateDisplay();
+void updateMeasurements(); // датчики, история давления, лог (всегда, раз в
+                           // UPDATE_INTERVAL)
+void renderScreen();       // рисует текущий экран, только если дисплей включён
+
+void displayWake();             // включить дисплей: экран 1, таймер заново
+void displayToggleScreenPage(); // переключить экран 1 ↔ 2 и перезапустить
+                                // таймер
+void displayExtendTimer();      // продлить показ ещё на SCREEN_ON_TIME_MS
+void displayTick();             // вызывать в loop(): гасит дисплей по таймеру
+bool displayIsOn();
