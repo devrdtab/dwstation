@@ -14,8 +14,6 @@ static volatile bool ntpSyncPending = false;
 static void onNtpSync(struct timeval *tv) { ntpSyncPending = true; }
 
 void timeInit() {
-  // Часовой пояс + первый запуск SNTP. Сети ещё может не быть,
-  // поэтому после подключения к WiFi вызывается timeStartNtp().
   sntp_set_time_sync_notification_cb(onNtpSync);
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
 
@@ -26,12 +24,11 @@ void timeInit() {
   }
 
   if (rtc.lostPower()) {
-    Serial.println("DS3231: батарейка села, время недостоверно. Нужен NTP.");
+    Serial.println("DS3231: время недостоверно (питание терялось). Ждём NTP.");
     clockValid = false;
     return;
   }
 
-  // В RTC храним UTC, часовой пояс применяет уже getLocalTime()
   DateTime nowUtc = rtc.now();
   struct timeval tv;
   tv.tv_sec = (time_t)nowUtc.unixtime();
@@ -45,7 +42,8 @@ void timeInit() {
 }
 
 void timeStartNtp() {
-  // Повторный configTime перезапускает SNTP и сразу делает новый запрос
+  // Повторный configTime перезапускает SNTP и сразу делает новый запрос —
+  // нужен, потому что первый вызов в timeInit() происходит ещё без WiFi
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
   Serial.println("SNTP перезапущен после подключения к WiFi.");
 }
@@ -60,7 +58,7 @@ bool timeUpdate() {
 
   if (rtcOk) {
     time_t nowUtc = time(nullptr);
-    rtc.adjust(DateTime((uint32_t)nowUtc)); // подводим RTC по интернету
+    rtc.adjust(DateTime((uint32_t)nowUtc));
     Serial.println("NTP получен, RTC синхронизирован.");
   } else {
     Serial.println("NTP получен (RTC отсутствует).");

@@ -1,4 +1,5 @@
 #include "WifiConnection.h"
+#include "config/Config.h"
 #include <WiFiManager.h>
 
 WiFiManager wifiManager;
@@ -26,7 +27,7 @@ void wifiInit() {
   wifiManager.setConfigPortalTimeout(0);
   wifiManager.setAPCallback(onConfigPortalStarted);
   wifiManager.setSaveConfigCallback(onWifiConfigSaved);
-  WiFi.setAutoReconnect(true); // тихий авто-реконнект к той же сети при обрыве
+  WiFi.setAutoReconnect(true);
 }
 
 bool wifiWasSaved() { return wifiManager.getWiFiIsSaved(); }
@@ -59,4 +60,32 @@ void wifiLoop() {
     Serial.println(WiFi.localIP());
   }
   wifiConnected = nowConnected;
+}
+
+void wifiPowerDown() {
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  wifiConnected = false;
+  Serial.println("WiFi выключен для экономии питания.");
+}
+
+bool wifiConnectForSync() {
+  Serial.println("Еженедельная синхронизация: включаю WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(); // подключение по уже сохранённым данным, без портала
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - start < WIFI_SYNC_CONNECT_TIMEOUT_MS) {
+    delay(100);
+  }
+
+  wifiConnected = (WiFi.status() == WL_CONNECTED);
+  if (wifiConnected) {
+    Serial.print("WiFi подключен для синхронизации, IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("Не удалось подключиться для синхронизации.");
+  }
+  return wifiConnected;
 }

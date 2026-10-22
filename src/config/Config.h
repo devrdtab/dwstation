@@ -52,3 +52,7 @@ const bool RESET_CALIBRATION = false;
 const int CALIBRATION_SAMPLES = 10;
 const unsigned long CALIBRATION_INTERVAL = 500;
 const unsigned long CALIBRATION_WARMUP = 3000;
+// ЭКОНОМИЯ ПИТАНИЯ: WiFi включается только на время синхронизации времени
+const unsigned long WIFI_RESYNC_INTERVAL_MS =
+    7UL * 24UL * 3600UL * 1000UL; // раз в неделю
+const unsigned long WIFI_SYNC_CONNECT_TIMEOUT_MS = 15000;

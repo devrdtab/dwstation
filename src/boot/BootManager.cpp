@@ -7,9 +7,6 @@
 #include "time/TimeManager.h"
 #include <math.h>
 
-// Процент экрана "Connecting to WiFi" / "Please Setup Wifi" — общий,
-// чтобы бар не прыгал между этапом попытки подключения и этапом ожидания
-// портала.
 static const int WIFI_STAGE_PERCENT = 35;
 
 static void showBootScreen(int percent, const char *status, bool animateDots) {
@@ -50,10 +47,8 @@ static void showBootScreen(int percent, const char *status, bool animateDots) {
 }
 
 static void waitForWifiSetup() {
-  // Бар и процент зафиксированы на WIFI_STAGE_PERCENT — не бегают туда-сюда.
-  // Двигаются только точки после текста, чтобы было видно, что устройство живо.
   while (!wifiConnected) {
-    wifiLoop(); // обязателен .process() для captive portal
+    wifiLoop();
     showBootScreen(WIFI_STAGE_PERCENT, "Please Setup Wifi", true);
     delay(30);
   }
@@ -128,7 +123,6 @@ void bootAnimation() {
   loadCalibration();
   delay(500);
 
-  // Время поднимаем ДО WiFi — с RTC оно есть сразу, даже без сети
   showBootScreen(25, "Get RTC time...", false);
   timeInit();
   delay(500);
@@ -143,9 +137,10 @@ void bootAnimation() {
   bool connected = wifiConnectBlocking();
 
   if (!connected) {
-    waitForWifiSetup(); // бар стоит на месте, пока пользователь не настроит
-                        // WiFi через портал
+    waitForWifiSetup();
   }
+
+  timeStartNtp();
 
   if (!timeIsValid()) {
     showBootScreen(70, "Get NTP", false);
@@ -154,6 +149,8 @@ void bootAnimation() {
     showBootScreen(70, "Time OK", false);
     delay(400);
   }
+
+  wifiPowerDown(); // время получено — WiFi больше не нужен
 
   runCalibrationIfNeeded();
 

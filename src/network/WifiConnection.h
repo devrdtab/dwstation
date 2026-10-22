@@ -13,3 +13,7 @@ bool wifiConnectBlocking();
 void wifiStartSetupPortal();
 bool wifiIsPortalActive();
 void wifiLoop();
+
+void wifiPowerDown();      // выключить радиомодуль WiFi для экономии питания
+bool wifiConnectForSync(); // короткое подключение по сохранённым данным, без
+                           // портала

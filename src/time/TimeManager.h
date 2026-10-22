@@ -7,7 +7,8 @@ constexpr int DAYLIGHT_OFFSET_SEC = 0;
 constexpr unsigned long NTP_CHECK_INTERVAL = 1000;
 constexpr unsigned long NTP_BOOT_TIMEOUT = 10000;
 
-void timeInit();      // RTC → системные часы, настройка часового пояса и SNTP
+void timeInit();      // RTC → системные часы, часовой пояс, первый запуск SNTP
+void timeStartNtp();  // перезапуск SNTP после подключения к WiFi
 bool timeUpdate();    // в loop(): переносит свежее NTP-время в RTC
 bool timeIsValid();   // можно ли доверять текущему времени
 bool timeRtcOk();     // найден ли DS3231

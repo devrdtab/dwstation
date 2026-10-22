@@ -7,7 +7,6 @@
 #include "button/Button.h"
 #include "config/Config.h"
 #include "display/Display.h"
-#include "network/RemoteSetup.h"
 #include "network/WifiConnection.h"
 #include "pressure/PressureHistory.h"
 #include "sensors/Sensors.h"
@@ -15,6 +14,7 @@
 
 unsigned long lastUpdate = 0;
 unsigned long lastTimeCheck = 0;
+unsigned long lastSyncTime = 0;
 
 static const char *resetReasonName(esp_reset_reason_t reason) {
   switch (reason) {
@@ -41,8 +41,6 @@ static const char *resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
-// Сканирует шину, печатает найденные адреса
-// и возвращает адрес дисплея (0x3C или 0x3D), либо 0, если его нет
 static uint8_t findOledAddress() {
   uint8_t oledAddr = 0;
   int found = 0;
@@ -65,7 +63,6 @@ static uint8_t findOledAddress() {
 void setup() {
   Serial.begin(115200);
 
-  // Нативный USB на C3 переподключается при ресете — ждём монитор до 3 секунд
   unsigned long serialWaitStart = millis();
   while (!Serial && millis() - serialWaitStart < 3000) {
     delay(10);
@@ -98,11 +95,11 @@ void setup() {
   display.setTextSize(1);
   display.display();
 
-  bootAnimation();
+  bootAnimation(); // сенсоры, калибровка, RTC, WiFi+NTP; в конце WiFi
+                   // выключается
 
-  remoteSetupInit();
+  lastSyncTime = millis();
 
-  // После загрузки: экран 1 на SCREEN_ON_TIME_MS, потом экран гаснет
   updateMeasurements();
   displayWake();
 
@@ -114,33 +111,47 @@ void loop() {
   unsigned long now = millis();
 
   wifiLoop();
-  remoteSetupLoop();
   sensorsRetryMissing();
 
   // КНОПКА
   ButtonEvent event = buttonUpdate();
   if (event == BUTTON_EVENT_PRESSED) {
     if (displayIsOn())
-      displayExtendTimer(); // экран включён — продлеваем
+      displayExtendTimer();
     else
-      displayWake(); // экран погашен — включаем на экран 1
+      displayWake();
   } else if (event == BUTTON_EVENT_LONG_PRESS) {
-    displayToggleScreenPage(); // 2 секунды — переключение экранов
+    displayToggleScreenPage();
   }
 
-  displayTick();                  // гасим экран по таймеру
-  buttonLedUpdate(displayIsOn()); // светодиод: мигает в ожидании
+  displayTick();
+  buttonLedUpdate(displayIsOn());
 
   if (now - lastTimeCheck >= NTP_CHECK_INTERVAL) {
     lastTimeCheck = now;
     timeUpdate();
   }
 
+  // ЕЖЕНЕДЕЛЬНАЯ СИНХРОНИЗАЦИЯ ВРЕМЕНИ
+  if (now - lastSyncTime >= WIFI_RESYNC_INTERVAL_MS) {
+    lastSyncTime = now; // сбрасываем в любом случае — повтор через неделю
+    Serial.println();
+    Serial.println("--- Еженедельная синхронизация времени ---");
+    if (wifiConnectForSync()) {
+      timeStartNtp();
+      unsigned long syncStart = millis();
+      while (!timeUpdate() && millis() - syncStart < NTP_BOOT_TIMEOUT) {
+        delay(50);
+      }
+    }
+    wifiPowerDown();
+  }
+
   tickPressureBlink();
 
   if (now - lastUpdate >= UPDATE_INTERVAL) {
     lastUpdate = now;
-    updateMeasurements(); // всегда: график давления не должен останавливаться
-    renderScreen();       // рисует, только если экран включён
+    updateMeasurements();
+    renderScreen();
   }
 }
